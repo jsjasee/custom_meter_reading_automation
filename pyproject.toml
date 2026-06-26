@@ -3,5 +3,6 @@ name = "metre-reading-analysis"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "gradio>=6.19.0",
     "python-dotenv>=1.2.2",
 ]
