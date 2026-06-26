@@ -86,13 +86,15 @@ def parse_meter_counts(text: str) -> dict[str, str | int]:
     Raises:
         ValueError: If the printer id or paper-size sections are missing.
     """
-    printer_id_match = re.search(r"^Equipment ID:\s*(\S+)", text, re.MULTILINE)
+    printer_id_match = re.search(r"^Equipment ID:[ \t]*(\S+)\r?$", text, re.MULTILINE)
     # with MULTILINE:
     # Default: ^ = only match at start of the whole string only.
     # With MULTILINE: ^ = start of every line (and $ = end of every line). This is important because our message spans multiple lines.
     # This regex finds the line that starts with 'Equipment ID:'
     if not printer_id_match:
-        raise ValueError("Could not find Equipment ID")
+        printer_id_match = re.search(r"^Serial Number:[ \t]*(\S+)\r?$", text, re.MULTILINE)
+    if not printer_id_match:
+        raise ValueError("Could not find Equipment ID or Serial Number")
 
     paper_size_match = re.search(
         r"Counters by Paper Size:\s*(.*?)\nUsage by Color Mode",
@@ -110,13 +112,47 @@ def parse_meter_counts(text: str) -> dict[str, str | int]:
     }
 
 
+def aggregate_meter_counts(email_dir: str | Path) -> dict[str, dict[str, int]]:
+    """Aggregate parsed meter counts for every email file in a directory.
+
+    Args:
+        email_dir: Directory containing local RFC822 meter emails.
+
+    Returns:
+        A mapping keyed by printer id with black-and-white and full-colour totals.
+
+    Raises:
+        FileNotFoundError: If the directory does not exist.
+        NotADirectoryError: If the path is not a directory.
+        ValueError: If two files produce the same printer id.
+    """
+    directory = Path(email_dir)
+    if not directory.exists():
+        raise FileNotFoundError(directory)
+    if not directory.is_dir():
+        raise NotADirectoryError(directory)
+
+    aggregated: dict[str, dict[str, int]] = {}
+    for email_path in sorted(path for path in directory.iterdir() if path.is_file()):
+        parsed = parse_meter_counts(extract_rfc822_text(email_path))
+        printer_id = str(parsed["printer_id"])
+        if printer_id in aggregated:
+            raise ValueError(f"Duplicate printer id found: {printer_id} ({email_path.name})")
+        aggregated[printer_id] = {
+            "black_and_white": int(parsed["black_and_white"]),
+            "full_colour": int(parsed["full_colour"]),
+        }
+
+    return aggregated
+
+
 def main() -> int:
-    email_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("emails/TASKalfa 5054ci_1") # this is just decoding the command
+    email_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("emails") # this is just decoding the command
     # Command you type:   python main.py apple banana
     # sys.argv becomes:   ["main.py", "apple", "banana"]
     #                        [0]         [1]      [2]
     # index 0 is always the script. note that same applies if we type 'uv run main.py', index 0 is still main.py
-    print(parse_meter_counts(extract_rfc822_text(email_path)))
+    print(aggregate_meter_counts(email_path))
     return 0
 
 
