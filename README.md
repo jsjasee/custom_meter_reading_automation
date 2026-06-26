@@ -1,14 +1,6 @@
 ---
 title: Meter Reading Report
 emoji: "📧"
-colorFrom: blue
-colorTo: green
-sdk: gradio
-sdk_version: 6.19.0
-python_version: 3.12
-app_file: app.py
-suggested_hardware: cpu-basic
-short_description: Upload .eml meter emails, preview the HTML report, and send it by SMTP.
 ---
 
 # Meter Reading Report
