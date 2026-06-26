@@ -1,12 +1,20 @@
 import sys
 import re
+import os
+import smtplib
+from email.policy import SMTP
+
+from dotenv import load_dotenv
+from html import escape
 from email import policy # policy is just a bunch of rules telling the computer how to parse the email
+from email.mime.text import MIMEText
 from email.message import EmailMessage
 from email.parser import BytesParser
 from pathlib import Path
 from typing import cast # we need this to tell py charm that we are using the LATEST parser to process the email,
 # otherwise it will flag a error saying .get_content() is not a method of the message object. LIKE DECLARING THE TYPE!
 
+load_dotenv()
 
 def extract_rfc822_text(path: str | Path) -> str:
     """Return the readable body text from a local RFC822 email file.
@@ -146,13 +154,78 @@ def aggregate_meter_counts(email_dir: str | Path) -> dict[str, dict[str, int]]:
     return aggregated
 
 
+def render_html_report(aggregated: dict[str, dict[str, int]]) -> str:
+    """Render aggregated meter counts as an HTML table.
+
+    Args:
+        aggregated: Mapping of printer ids to black-and-white and full-colour totals.
+
+    Returns:
+        A complete HTML document containing one row per printer and a totals row.
+    """
+    rows = []
+    total_black_and_white = 0
+    total_full_colour = 0
+    for printer_id, counts in aggregated.items():
+        black_and_white = counts["black_and_white"]
+        full_colour = counts["full_colour"]
+        total_black_and_white += black_and_white
+        total_full_colour += full_colour
+        rows.append(
+            "<tr>"
+            f"<td>{escape(printer_id)}</td>"
+            f"<td>{black_and_white}</td>"
+            f"<td>{full_colour}</td>"
+            "</tr>"
+        )
+
+    rows.append(
+        "<tr><th>Total</th>"
+        f"<th>{total_black_and_white}</th>"
+        f"<th>{total_full_colour}</th>"
+        "</tr>"
+    )
+    table_rows = "\n".join(rows)
+    return (
+        "<!DOCTYPE html><html><body>"
+        "<table border='1' cellpadding='6' cellspacing='0'>"
+        "<thead><tr><th>Printer ID</th><th>B&W</th><th>Full Colour</th></tr></thead>"
+        f"<tbody>{table_rows}</tbody>"
+        "</table></body></html>"
+    )
+
+def send_html_report(html_report: str, env_path: str | Path = ".env") -> None:
+    """Send the HTML report using SMTP credentials from a local env file.
+
+    Args:
+        html_report: The rendered HTML report body.
+        env_path: Path to the env file containing SMTP settings.
+
+    Raises:
+        ValueError: If a required SMTP setting is missing.
+        smtplib.SMTPException: If SMTP delivery fails.
+    """
+
+    recipient = os.environ.get("SMTP_TO") or os.environ["SMTP_FROM"]
+    subject = "Meter Reading Report"
+    message = MIMEText(html_report, "html", "utf-8")
+    message["Subject"] = subject
+    message["From"] = os.environ["SMTP_FROM"]
+    message["To"] = recipient
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(os.environ["SMTP_FROM"], os.environ["SMTP_PASSWORD"])
+        smtp.send_message(message)
+
 def main() -> int:
     email_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("emails") # this is just decoding the command
     # Command you type:   python main.py apple banana
     # sys.argv becomes:   ["main.py", "apple", "banana"]
     #                        [0]         [1]      [2]
     # index 0 is always the script. note that same applies if we type 'uv run main.py', index 0 is still main.py
-    print(aggregate_meter_counts(email_path))
+    html_report = render_html_report(aggregate_meter_counts(email_path))
+    send_html_report(html_report)
+    print("Report sent.")
     return 0
 
 
