@@ -217,14 +217,48 @@ def send_html_report(html_report: str, env_path: str | Path = ".env") -> None:
         smtp.login(os.environ["SMTP_FROM"], os.environ["SMTP_PASSWORD"])
         smtp.send_message(message)
 
+
+def process_email_files(email_paths: list[str | Path]) -> str:
+    """Process uploaded email files, send the report, and return the HTML.
+
+    Args:
+        email_paths: Uploaded RFC822 email file paths.
+
+    Returns:
+        The rendered HTML report that was emailed.
+
+    Raises:
+        ValueError: If no email files were provided or a duplicate printer id is found.
+    """
+    if not email_paths:
+        raise ValueError("No email files provided")
+
+    aggregated: dict[str, dict[str, int]] = {}
+    for email_path in [Path(path) for path in email_paths]:
+        parsed = parse_meter_counts(extract_rfc822_text(email_path))
+        printer_id = str(parsed["printer_id"])
+        if printer_id in aggregated:
+            raise ValueError(f"Duplicate printer id found: {printer_id} ({email_path.name})")
+        aggregated[printer_id] = {
+            "black_and_white": int(parsed["black_and_white"]),
+            "full_colour": int(parsed["full_colour"]),
+        }
+
+    html_report = render_html_report(aggregated)
+    send_html_report(html_report)
+    return html_report
+
+
 def main() -> int:
     email_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("emails") # this is just decoding the command
     # Command you type:   python main.py apple banana
     # sys.argv becomes:   ["main.py", "apple", "banana"]
     #                        [0]         [1]      [2]
     # index 0 is always the script. note that same applies if we type 'uv run main.py', index 0 is still main.py
-    html_report = render_html_report(aggregate_meter_counts(email_path))
-    send_html_report(html_report)
+    html_report = process_email_files(
+        [path for path in email_path.iterdir() if path.is_file()] if email_path.is_dir() else [email_path]
+    )
+    # iterdir() provides all the files in that directory.
     print("Report sent.")
     return 0
 
