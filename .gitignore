@@ -1,0 +1,5 @@
+*.env
+/emails/*
+PRD.md
+__pycache__/
+.idea/
