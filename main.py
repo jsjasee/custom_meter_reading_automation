@@ -1,4 +1,5 @@
 import sys
+import re
 from email import policy # policy is just a bunch of rules telling the computer how to parse the email
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -56,13 +57,66 @@ def extract_rfc822_text(path: str | Path) -> str:
     raise ValueError(f"No readable text body found in {message_path}")
 
 
+def _sum_counter_block(section: str, start_label: str, end_label: str) -> int:
+    match = re.search(
+        rf"{re.escape(start_label)}:\s*(.*?)(?=\n\s*{re.escape(end_label)}:)",
+        section,
+        re.DOTALL,
+    ) # without .DOTALL, the dot(.) in regex will just stop at the first '\n', now the (.) dont care, it will continue to match beyond '\n' as long as it fits the pattern.
+    if not match:
+        raise ValueError(f"Could not find {start_label} block")
+    return sum(int(value) for value in re.findall(r":\s+(\d+)", match.group(1)))
+    # INTERESTING! swap out [] with () to get a generator. sum() here does the looping, it will keep calling the generator to get each of the values until there's no more
+    # example:
+    # text = "A4: 100\nA3: 250\nA5: 30"
+    # re.findall(r":\s+(\d+)", text)          # ['100', '250', '30']   <- findall returns a LIST (of strings)
+    # (int(v) for v in re.findall(...))       # a generator -> yields 100, 250, 30 one at a time
+    # sum(int(v) for v in re.findall(...))    # 380                     <- sum pulls them and adds
+
+
+def parse_meter_counts(text: str) -> dict[str, str | int]:
+    """Parse the printer id and paper-size totals from extracted meter text.
+
+    Args:
+        text: Decoded email body containing meter counters.
+
+    Returns:
+        A mapping with the printer id plus black-and-white and full-colour totals.
+
+    Raises:
+        ValueError: If the printer id or paper-size sections are missing.
+    """
+    printer_id_match = re.search(r"^Equipment ID:\s*(\S+)", text, re.MULTILINE)
+    # with MULTILINE:
+    # Default: ^ = only match at start of the whole string only.
+    # With MULTILINE: ^ = start of every line (and $ = end of every line). This is important because our message spans multiple lines.
+    # This regex finds the line that starts with 'Equipment ID:'
+    if not printer_id_match:
+        raise ValueError("Could not find Equipment ID")
+
+    paper_size_match = re.search(
+        r"Counters by Paper Size:\s*(.*?)\nUsage by Color Mode",
+        text,
+        re.DOTALL,
+    )
+    if not paper_size_match:
+        raise ValueError("Could not isolate Counters by Paper Size section")
+
+    paper_size_section = paper_size_match.group(1) # group(0) = the entire match captured, group(1) means whatever the first ( ) captured
+    return {
+        "printer_id": printer_id_match.group(1),
+        "black_and_white": _sum_counter_block(paper_size_section, "Black & White", "Single Color"),
+        "full_colour": _sum_counter_block(paper_size_section, "Full Color", "Total"),
+    }
+
+
 def main() -> int:
     email_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("emails/TASKalfa 5054ci_1") # this is just decoding the command
     # Command you type:   python main.py apple banana
     # sys.argv becomes:   ["main.py", "apple", "banana"]
     #                        [0]         [1]      [2]
     # index 0 is always the script. note that same applies if we type 'uv run main.py', index 0 is still main.py
-    print(extract_rfc822_text(email_path))
+    print(parse_meter_counts(extract_rfc822_text(email_path)))
     return 0
 
 
