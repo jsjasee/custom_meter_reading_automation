@@ -218,14 +218,14 @@ def send_html_report(html_report: str, env_path: str | Path = ".env") -> None:
         smtp.send_message(message)
 
 
-def process_email_files(email_paths: list[str | Path]) -> str:
-    """Process uploaded email files, send the report, and return the HTML.
+def build_html_report(email_paths: list[str | Path]) -> str:
+    """Process uploaded email files and return the rendered HTML report.
 
     Args:
         email_paths: Uploaded RFC822 email file paths.
 
     Returns:
-        The rendered HTML report that was emailed.
+        The rendered HTML report.
 
     Raises:
         ValueError: If no email files were provided or a duplicate printer id is found.
@@ -244,7 +244,19 @@ def process_email_files(email_paths: list[str | Path]) -> str:
             "full_colour": int(parsed["full_colour"]),
         }
 
-    html_report = render_html_report(aggregated)
+    return render_html_report(aggregated)
+
+
+def process_email_files(email_paths: list[str | Path]) -> str:
+    """Process uploaded email files, send the report, and return the HTML.
+
+    Args:
+        email_paths: Uploaded RFC822 email file paths.
+
+    Returns:
+        The rendered HTML report that was emailed.
+    """
+    html_report = build_html_report(email_paths)
     send_html_report(html_report)
     return html_report
 

@@ -4,7 +4,7 @@ from typing import Any
 
 import gradio as gr
 
-from main import process_email_files
+from main import build_html_report, send_html_report
 
 
 def process_uploaded_files(files: list[Any] | None) -> tuple[str, str]:
@@ -19,7 +19,11 @@ def process_uploaded_files(files: list[Any] | None) -> tuple[str, str]:
     if not files:
         return "Upload at least one .eml file.", ""
 
-    html_report = process_email_files([file.name for file in files])
+    html_report = build_html_report([file.name for file in files])
+    try:
+        send_html_report(html_report)
+    except Exception as exc:
+        return f"Processed {len(files)} file(s), but email sending failed: {exc}", html_report
     return f"Processed {len(files)} file(s) and sent the report email.", html_report
 
 
@@ -47,4 +51,4 @@ if __name__ == "__main__":
     # this code is always the same, the code here only runs when im running the file directly. 'name' here does NOT come from app, as in app.py
     # it is automatically set by python depending on where the code is being run.
     # it is also to prevent file from accidentally executing when we import a function from it for example.
-    demo.launch(inbrowser=True)
+    demo.launch()
