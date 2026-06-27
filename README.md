@@ -9,7 +9,7 @@ python_version: '3.13'
 app_file: app.py
 pinned: false
 suggested_hardware: cpu-basic
-short_description: Upload .eml meter emails, preview the HTML report, and send it by SMTP.
+short_description: Meter reading automation
 ---
 
 # Meter Reading Report
