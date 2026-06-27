@@ -1,8 +1,7 @@
 import sys
 import re
 import os
-import smtplib
-from email.policy import SMTP
+import base64
 
 from dotenv import load_dotenv
 from html import escape
@@ -13,6 +12,8 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import cast # we need this to tell py charm that we are using the LATEST parser to process the email,
 # otherwise it will flag a error saying .get_content() is not a method of the message object. LIKE DECLARING THE TYPE!
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 load_dotenv()
 
@@ -195,27 +196,43 @@ def render_html_report(aggregated: dict[str, dict[str, int]]) -> str:
     )
 
 def send_html_report(html_report: str, env_path: str | Path = ".env") -> None:
-    """Send the HTML report using SMTP credentials from a local env file.
+    """Send the HTML report using the Gmail API.
 
     Args:
         html_report: The rendered HTML report body.
         env_path: Path to the env file containing SMTP settings.
 
     Raises:
-        ValueError: If a required SMTP setting is missing.
-        smtplib.SMTPException: If SMTP delivery fails.
+        ValueError: If a required Gmail API setting is missing.
     """
+    required_keys = [
+        "GMAIL_CLIENT_ID",
+        "GMAIL_CLIENT_SECRET",
+        "GMAIL_REFRESH_TOKEN",
+        "GMAIL_FROM",
+    ]
+    missing_keys = [key for key in required_keys if not os.environ.get(key)]
+    if missing_keys:
+        raise ValueError(f"Missing Gmail API settings: {', '.join(missing_keys)}")
 
-    recipient = os.environ.get("SMTP_TO") or os.environ["SMTP_FROM"]
-    subject = "Meter Reading Report"
+    recipient = os.environ.get("GMAIL_TO") or os.environ["GMAIL_FROM"]
+    subject = os.environ.get("REPORT_SUBJECT", "Meter Reading Report")
     message = MIMEText(html_report, "html", "utf-8")
     message["Subject"] = subject
-    message["From"] = os.environ["SMTP_FROM"]
+    message["From"] = os.environ["GMAIL_FROM"]
     message["To"] = recipient
+    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(os.environ["SMTP_FROM"], os.environ["SMTP_PASSWORD"])
-        smtp.send_message(message)
+    credentials = Credentials(
+        token=None,
+        refresh_token=os.environ["GMAIL_REFRESH_TOKEN"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ["GMAIL_CLIENT_ID"],
+        client_secret=os.environ["GMAIL_CLIENT_SECRET"],
+        scopes=["https://www.googleapis.com/auth/gmail.send"],
+    )
+    service = build("gmail", "v1", credentials=credentials)
+    service.users().messages().send(userId="me", body={"raw": encoded_message}).execute()
 
 
 def build_html_report(email_paths: list[str | Path]) -> str:
