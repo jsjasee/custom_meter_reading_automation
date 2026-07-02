@@ -215,12 +215,11 @@ def send_html_report(html_report: str, env_path: str | Path = ".env") -> None:
     if missing_keys:
         raise ValueError(f"Missing Gmail API settings: {', '.join(missing_keys)}")
 
-    recipient = os.environ.get("GMAIL_TO") or os.environ["GMAIL_FROM"]
     subject = os.environ.get("REPORT_SUBJECT", "Meter Reading Report")
     message = MIMEText(html_report, "html", "utf-8")
     message["Subject"] = subject
     message["From"] = os.environ["GMAIL_FROM"]
-    message["To"] = recipient
+    message["To"] = os.environ.get("GMAIL_TO") or os.environ["GMAIL_FROM"]
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     credentials = Credentials(
